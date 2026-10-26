@@ -9,6 +9,40 @@ Marketplace de dos lados para dueños de perros. Junta en un solo lugar:
 
 **[Ver el MVP](https://hauz-montevideo-perros.lovable.app)**
 
+## Arquitectura del MVP
+
+```mermaid
+flowchart LR
+    U[Dueño de perro<br/>web mobile-first] --> F[Frontend en Lovable<br/>React + Tailwind]
+    F --> A[Supabase Auth<br/>registro y login]
+    F --> D[(Supabase Postgres)]
+    F --> W[Contacto por WhatsApp]
+    subgraph Dimensiones
+      S[Servicios verificados]
+      E[Espacios pet-friendly]
+      O[Orientación]
+    end
+    F --- Dimensiones
+    F -- cada interacción --> EV[(Tabla de eventos<br/>sesión, usuario, variante,<br/>evento, dimensión)]
+    EV --> M[Métricas del A/B<br/>analisis/metricas_ab.sql]
+```
+
+## Estructura del repo
+
+```
+hauz-marketplace-mascotas/
+├── db/
+│   └── eventos.sql               tabla de eventos con RLS para medir el A/B
+├── analisis/
+│   └── metricas_ab.sql           uso cruzado, dimensión de entrada, búsquedas y plan por variante
+└── docs/
+    ├── hipotesis_y_resultados.md sistema de hipótesis, Van Westendorp y experimento
+    ├── modelo_de_negocio.md      TAM/SAM/SOM, unit economics, competencia y pivots
+    └── investigacion.md          instrumentos de campo y próximos experimentos
+```
+
+El frontend vive en Lovable y está publicado en [hauz-montevideo-perros.lovable.app](https://hauz-montevideo-perros.lovable.app).
+
 ## Investigación de campo
 
 | Técnica | Alcance |
@@ -19,14 +53,16 @@ Marketplace de dos lados para dueños de perros. Junta en un solo lugar:
 | Observación estructurada | un café pet-friendly |
 | Test A/B sobre el MVP | 30 usuarios |
 
-## MVP
+## El experimento
 
-- Construido en **Lovable** con **Supabase** como backend.
-- Tabla de eventos propia para medir el test A/B.
+- **Hipótesis central:** si la integración tiene valor, al menos el 60 % de los usuarios va a usar más de una dimensión sin que se lo pidan.
+- **A/B:** una sola variable, el momento en que aparecen los planes. A, al ingreso. B, después de navegar.
+- **Medición propia:** una tabla de eventos en Supabase registra cada interacción ([`db/eventos.sql`](db/eventos.sql)) y las métricas salen con SQL ([`analisis/metricas_ab.sql`](analisis/metricas_ab.sql)).
 
 ## Resultados
 
 - **Hipótesis central validada:** el 63 % de los usuarios del MVP (19 de 30) usó más de una sección sin que se lo pidieran.
+- **A/B:** mostrar los planes después de navegar llevó a elegir más el plan integrado. La integración se valora después de vivirla.
 - **Mercado:** TAM de USD 75 M por año, SAM de USD 33,75 M y SOM de USD 1,13 M de GMV al año 3. Base: censo INE 2023, con 1.448.224 perros en Uruguay.
 - **Precio:** con la técnica Van Westendorp, la banda óptima de suscripción quedó entre $400 y $600 por mes.
 - **Unit economics proyectados:**
@@ -36,14 +72,24 @@ Marketplace de dos lados para dueños de perros. Junta en un solo lugar:
 - **Competencia:** análisis frente a Mascoters, Ruffo, MascotaMás y el mercado informal de WhatsApp e Instagram, con un Strategy Canvas.
 - **Pitch:** presentado ante un jurado con asesores de ANDE y ANII.
 
+Detalle en [docs/hipotesis_y_resultados.md](docs/hipotesis_y_resultados.md) y [docs/modelo_de_negocio.md](docs/modelo_de_negocio.md).
+
+## Decisiones de diseño
+
+- **MVP funcional y no prototipo:** las tres dimensiones operativas con login y contacto por WhatsApp, para medir comportamiento real y no intención.
+- **Una sola variable en el A/B**, para atribuir la diferencia al momento de la oferta.
+- **Eventos propios en lugar de una herramienta externa:** cada evento guarda la variante y la dimensión, que es justo lo que pide la hipótesis.
+- **Row Level Security** en la tabla de eventos: cada usuario solo escribe sus propios eventos.
+- **Iterar con el MVP en uso:** se corrigieron en el camino el link de WhatsApp para números uruguayos, los filtros, el login y el formato de los artículos.
+
 ## Aprendizaje
 
 La disposición a pagar que la gente declaró en la encuesta no apareció cuando hubo que cobrar, ni en consumidores ni en proveedores. Con esa evidencia decidí no seguir con la idea. Validar el pago real antes de construir es la lección que me llevo.
 
 ## Stack
 
-Lovable · Supabase · Google Forms · Test A/B · Van Westendorp
+Lovable · React · Supabase (Postgres, Auth, RLS) · SQL · Google Forms · Test A/B · Van Westendorp
 
 ---
 
-**Romina Cor Castro** · [LinkedIn](https://www.linkedin.com/in/rominacor/)
+**Romina Cor Castro** · [Portafolio](https://rominacor21.github.io) · [LinkedIn](https://www.linkedin.com/in/rominacor/)
