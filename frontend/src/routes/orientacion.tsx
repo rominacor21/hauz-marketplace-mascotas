@@ -1,0 +1,7 @@
+import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
+
+export const Route = createFileRoute("/orientacion")({
+  component: () => <Outlet />,
+});
+
+export const _ = Link;

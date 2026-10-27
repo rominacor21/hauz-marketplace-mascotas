@@ -9,55 +9,98 @@ Marketplace de dos lados para dueños de perros. Junta en un solo lugar:
 
 **[Ver el MVP](https://hauz-montevideo-perros.lovable.app)**
 
-## Arquitectura del MVP
+## Arquitectura
 
 ```mermaid
 flowchart LR
-    U[Dueño de perro<br/>web mobile-first] --> F[Frontend en Lovable<br/>React + Tailwind]
-    F --> A[Supabase Auth<br/>registro y login]
-    F --> D[(Supabase Postgres)]
-    F --> W[Contacto por WhatsApp]
-    subgraph Dimensiones
-      S[Servicios verificados]
-      E[Espacios pet-friendly]
-      O[Orientación]
+    subgraph Navegador
+      UI[frontend/<br/>React + TanStack Router<br/>Tailwind, mobile-first]
+      EXP[experiment.ts<br/>sesión y variante A/B]
     end
-    F --- Dimensiones
-    F -- cada interacción --> EV[(Tabla de eventos<br/>sesión, usuario, variante,<br/>evento, dimensión)]
-    EV --> M[Métricas del A/B<br/>analisis/metricas_ab.sql]
+    subgraph Servidor
+      FN[backend/functions<br/>server functions con Zod]
+      ADM[backend/supabase<br/>cliente service role]
+    end
+    subgraph Supabase
+      DB[(PostgreSQL<br/>db/migrations)]
+    end
+    UI -- lectura pública<br/>spaces, providers, articles --> DB
+    UI -- registro, login, plan, admin --> FN
+    EXP -- cada evento --> FN
+    FN --> ADM --> DB
+    UI -- contacto --> WA[WhatsApp]
 ```
+
+- **Frontend:** TanStack Start con rutas por archivo. Renderiza en el servidor y se hidrata en el navegador.
+- **Backend:** server functions de TanStack Start. Corren solo en el servidor, validan cada entrada con Zod y son el único camino a los datos sensibles.
+- **Base de datos:** PostgreSQL en Supabase con Row Level Security. El navegador solo lee el contenido público; perfiles, eventos y números de WhatsApp pasan por el backend.
 
 ## Estructura del repo
 
 ```
 hauz-marketplace-mascotas/
+├── frontend/                       app TanStack Start (Vite)
+│   ├── src/routes/                 una ruta por archivo
+│   │   ├── index.tsx               landing
+│   │   ├── registro.tsx, login.tsx
+│   │   ├── plan.tsx                elección de plan
+│   │   ├── home.tsx                accesos según el plan
+│   │   ├── espacios.*.tsx          directorio con filtros por barrio y categoría
+│   │   ├── servicios.tsx           proveedores y contacto por WhatsApp
+│   │   ├── orientacion.*.tsx       artículos
+│   │   ├── perfil.tsx              datos y actividad del usuario
+│   │   └── admin.tsx               panel con métricas del experimento
+│   ├── src/lib/experiment.ts       sesión, variante A/B y registro de eventos
+│   ├── src/lib/analytics.ts        visitas por sección
+│   └── src/integrations/supabase/  cliente público
+├── backend/
+│   ├── functions/                  server functions
+│   │   ├── profiles.functions.ts   registro, login, perfil, plan, tracking y admin
+│   │   ├── eventos.functions.ts    eventos del A/B
+│   │   └── providers.functions.ts  WhatsApp del proveedor bajo pedido
+│   └── supabase/client.server.ts   cliente con service role, solo servidor
 ├── db/
-│   └── eventos.sql               tabla de eventos con RLS para medir el A/B
-├── analisis/
-│   └── metricas_ab.sql           uso cruzado, dimensión de entrada, búsquedas y plan por variante
-└── docs/
-    ├── hipotesis_y_resultados.md sistema de hipótesis, Van Westendorp y experimento
-    ├── modelo_de_negocio.md      TAM/SAM/SOM, unit economics, competencia y pivots
-    └── investigacion.md          instrumentos de campo y próximos experimentos
+│   ├── migrations/                 esquema real, en orden
+│   ├── queries/metricas_ab.sql     hipótesis central y embudo por variante
+│   └── types.ts                    tipos generados del esquema
+└── specs/
+    ├── hipotesis_y_resultados.md   sistema de hipótesis y resultados
+    ├── investigacion.md            instrumentos de campo
+    └── modelo_de_negocio.md        TAM/SAM/SOM, unit economics, pivots
 ```
 
-El frontend vive en Lovable y está publicado en [hauz-montevideo-perros.lovable.app](https://hauz-montevideo-perros.lovable.app).
+## Cómo correrlo
 
-## Investigación de campo
+Necesitás Node 20 o más y un proyecto de Supabase.
 
-| Técnica | Alcance |
+```bash
+npm install
+cp frontend/.env.example frontend/.env    # completá las claves de Supabase
+npm run dev                               # http://localhost:8080
+```
+
+Para crear las tablas, aplicá `db/migrations` en orden (ver [db/README.md](db/README.md)).
+
+Variables de entorno:
+
+| Variable | Dónde se usa |
 |---|---|
-| Entrevistas en profundidad para descubrir el problema | 16 |
-| Encuestas a consumidores | 42 válidas |
-| Encuestas y entrevistas a proveedores | ruta de campo con 11 proveedores en Pocitos, Punta Carretas y Buceo |
-| Observación estructurada | un café pet-friendly |
-| Test A/B sobre el MVP | 30 usuarios |
+| `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` | Cliente público en el navegador |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Backend, nunca llega al navegador |
+| `ADMIN_PASSWORD` | Clave del panel `/admin`; sin ella el panel queda cerrado |
+| `VITE_WHATSAPP_CONCIERGE` | Número del concierge para el botón de contacto |
+
+```bash
+npm run build      # build de producción (Cloudflare Workers vía Nitro)
+npm run lint
+```
 
 ## El experimento
 
 - **Hipótesis central:** si la integración tiene valor, al menos el 60 % de los usuarios va a usar más de una dimensión sin que se lo pidan.
-- **A/B:** una sola variable, el momento en que aparecen los planes. A, al ingreso. B, después de navegar.
-- **Medición propia:** una tabla de eventos en Supabase registra cada interacción ([`db/eventos.sql`](db/eventos.sql)) y las métricas salen con SQL ([`analisis/metricas_ab.sql`](analisis/metricas_ab.sql)).
+- **Asignación:** cada sesión recibe la variante A o B al azar y la conserva; todos los eventos se guardan con su variante.
+- **Eventos:** `sesion_inicio`, `registro_completo`, `ver_planes`, `elegir_plan`, `ver_dimension`, `click_whatsapp`.
+- **Medición:** [`db/queries/metricas_ab.sql`](db/queries/metricas_ab.sql) y el panel `/admin`, que calcula el % de usuarios con más de una dimensión.
 
 ## Resultados
 
@@ -65,22 +108,30 @@ El frontend vive en Lovable y está publicado en [hauz-montevideo-perros.lovable
 - **A/B:** mostrar los planes después de navegar llevó a elegir más el plan integrado. La integración se valora después de vivirla.
 - **Mercado:** TAM de USD 75 M por año, SAM de USD 33,75 M y SOM de USD 1,13 M de GMV al año 3. Base: censo INE 2023, con 1.448.224 perros en Uruguay.
 - **Precio:** con la técnica Van Westendorp, la banda óptima de suscripción quedó entre $400 y $600 por mes.
-- **Unit economics proyectados:**
-  - Suscripción de $500 por mes más 10 % de comisión
-  - Margen de contribución del 62,5 %
-  - LTV/CAC de 5,0
-- **Competencia:** análisis frente a Mascoters, Ruffo, MascotaMás y el mercado informal de WhatsApp e Instagram, con un Strategy Canvas.
+- **Unit economics proyectados:** suscripción de $500 por mes más 10 % de comisión, margen de contribución del 62,5 % y LTV/CAC de 5,0.
 - **Pitch:** presentado ante un jurado con asesores de ANDE y ANII.
 
-Detalle en [docs/hipotesis_y_resultados.md](docs/hipotesis_y_resultados.md) y [docs/modelo_de_negocio.md](docs/modelo_de_negocio.md).
+Detalle en [specs/](specs/).
 
 ## Decisiones de diseño
 
-- **MVP funcional y no prototipo:** las tres dimensiones operativas con login y contacto por WhatsApp, para medir comportamiento real y no intención.
-- **Una sola variable en el A/B**, para atribuir la diferencia al momento de la oferta.
-- **Eventos propios en lugar de una herramienta externa:** cada evento guarda la variante y la dimensión, que es justo lo que pide la hipótesis.
-- **Row Level Security** en la tabla de eventos: cada usuario solo escribe sus propios eventos.
-- **Iterar con el MVP en uso:** se corrigieron en el camino el link de WhatsApp para números uruguayos, los filtros, el login y el formato de los artículos.
+- **Server functions en lugar de una API aparte:** el backend vive en el mismo deploy, con tipos compartidos de punta a punta y sin CORS.
+- **Defensa en capas para los datos personales:** RLS en la base, columnas revocadas (el WhatsApp del proveedor), cliente service role cargado solo dentro de los handlers y validación con Zod en cada entrada.
+- **Eventos escritos solo por el servidor:** al principio el navegador insertaba directo; después se revocó ese permiso para que nadie pudiera inflar las métricas.
+- **Login sin contraseña para el MVP:** registro con email y sesión local. Bajaba la fricción para los 30 usuarios del test; para producción va Supabase Auth.
+- **Mobile-first:** contenedor de 448 px y navegación inferior, porque el segmento usa el celular.
+- **Secretos fuera del código:** la clave del admin y el número de WhatsApp van por variables de entorno.
+
+## Roadmap
+
+- [x] Tres dimensiones operativas con filtros
+- [x] Registro, elección de plan y perfil
+- [x] Tracking propio de eventos y variante A/B
+- [x] Panel admin con la métrica de la hipótesis central
+- [ ] Supabase Auth con magic link en lugar de la sesión local
+- [ ] Flujo de pago simulado para medir disposición de pago real
+- [ ] Panel del proveedor: perfil, agenda y valoraciones
+- [ ] Onboarding que muestre los planes después de navegar, según el resultado del A/B
 
 ## Aprendizaje
 
@@ -88,7 +139,7 @@ La disposición a pagar que la gente declaró en la encuesta no apareció cuando
 
 ## Stack
 
-Lovable · React · Supabase (Postgres, Auth, RLS) · SQL · Google Forms · Test A/B · Van Westendorp
+TanStack Start · React 19 · TypeScript · Tailwind CSS 4 · Supabase (PostgreSQL, RLS) · Zod · Vite · Lovable
 
 ---
 

@@ -25,7 +25,7 @@
 ## El experimento del MVP
 
 - **Variable única del A/B:** el momento en que se muestran los planes. Variante A, al ingreso. Variante B, después de navegar entre dimensiones.
-- **Métricas:** % de usuarios con uso cruzado, búsquedas por sesión, dimensión de entrada y selección de plan por variante. Las consultas están en [`analisis/metricas_ab.sql`](../analisis/metricas_ab.sql).
+- **Métricas:** % de usuarios con uso cruzado, búsquedas por sesión, dimensión de entrada y selección de plan por variante. Las consultas están en [`db/queries/metricas_ab.sql`](../db/queries/metricas_ab.sql).
 - **Resultado:** la variante que muestra los planes después de navegar tuvo más selección del plan integrado. El usuario valora la integración después de vivirla, no antes.
 - **Patrón de navegación:** la mayoría entró por servicios y siguió por el directorio de espacios, igual que lo declarado en la encuesta.
 
